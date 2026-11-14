@@ -40,13 +40,71 @@ impl FileWatcher {
         Ok(FileWatcher { watcher, sender })
     }
 
+    /// Watches the given path and all of its subdirectories.
     pub fn watch(&mut self, path: &Path) -> notify::Result<()> {
         self.watcher.watch(path, RecursiveMode::Recursive)?;
 
         Ok(())
     }
 
+    /// Watches the given path without descending into its subdirectories.
+    ///
+    /// This is useful for detecting the creation of directories that do not
+    /// exist yet, without watching the whole project.
+    pub fn watch_non_recursive(&mut self, path: &Path) -> notify::Result<()> {
+        self.watcher.watch(path, RecursiveMode::NonRecursive)?;
+
+        Ok(())
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<DebouncedEvent> {
         self.sender.subscribe()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env::temp_dir;
+    use std::fs;
+
+    fn missing_path() -> std::path::PathBuf {
+        temp_dir().join(format!("metassr-watcher-missing-{}", std::process::id()))
+    }
+
+    fn existing_path() -> std::path::PathBuf {
+        let path = temp_dir().join(format!("metassr-watcher-existing-{}", std::process::id()));
+
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+
+        path
+    }
+
+    #[test]
+    fn watching_a_missing_path_fails() {
+        let mut watcher = FileWatcher::new().unwrap();
+
+        assert!(watcher.watch(&missing_path()).is_err());
+    }
+
+    #[test]
+    fn watching_an_existing_path_succeeds() {
+        let mut watcher = FileWatcher::new().unwrap();
+        let path = existing_path();
+
+        assert!(watcher.watch(&path).is_ok());
+
+        let _ = fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn watching_non_recursively_succeeds() {
+        let mut watcher = FileWatcher::new().unwrap();
+        let path = existing_path();
+
+        assert!(watcher.watch_non_recursive(&path).is_ok());
+
+        let _ = fs::remove_dir_all(&path);
     }
 }
